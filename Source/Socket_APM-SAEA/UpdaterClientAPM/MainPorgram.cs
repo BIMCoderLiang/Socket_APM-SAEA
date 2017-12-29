@@ -7,7 +7,8 @@ namespace UpdaterClientAPM
 {
     public class MainPorgram
     {
-
+        //TestFile directory is used to Test socket
+        //See Socket_APM-SAEA\TestFile
         static void Main(string[] args)
         {
             var mainFolder = AppDomain.CurrentDomain.BaseDirectory.Replace("bin","TestFile");
