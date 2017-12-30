@@ -44,7 +44,6 @@ namespace UpdaterServerSAEA
             {
                 var readWriteEventArg = new SocketAsyncEventArgs();
                 readWriteEventArg.Completed += OnIO_Completed;
-                readWriteEventArg.UserToken = null;
 
                 _bufferManager.SetBuffer(readWriteEventArg);
                 _readWritePool.Push(readWriteEventArg);
@@ -62,7 +61,7 @@ namespace UpdaterServerSAEA
                     ProcessReceiveFindFileRequest(e);
                     break;
                 default:
-                    throw new ArgumentException("The last operation completed on the socket was not a receive or send");
+                    break;
             }
         }
 
@@ -117,7 +116,6 @@ namespace UpdaterServerSAEA
                 if (socket.Connected)
                 {
                     SocketAsyncEventArgs readEventArgs = _readWritePool.Pop();
-                    readEventArgs.UserToken = e.UserToken;
                     readEventArgs.AcceptSocket = e.AcceptSocket;
 
                     if (!socket.ReceiveAsync(readEventArgs))
@@ -135,10 +133,11 @@ namespace UpdaterServerSAEA
             if (e.SocketError == SocketError.Success)
             {
                 var bytesRead = e.BytesTransferred;
-                if (bytesRead > 0 && e.SocketError == SocketError.Success)
+                if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
                 {
                     var comobject = new ComObject();
                     var receiveData = comobject.Buffer.Take(bytesRead).ToArray();
+                    Array.Copy(e.Buffer, e.Offset, receiveData, 0, e.BytesTransferred);                 
                     var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientFindFileInfoTag());
                     if (dataList != null && dataList.Any())
                     {
@@ -218,11 +217,10 @@ namespace UpdaterServerSAEA
 
         private void CloseClientSocket(SocketAsyncEventArgs e)
         {
-            ComObject token = e.UserToken as ComObject;
             try
             {
-                token.WorkSocket.Shutdown(SocketShutdown.Both);
-                token.WorkSocket.Close();
+                e.AcceptSocket.Shutdown(SocketShutdown.Both);
+                e.AcceptSocket.Close();
             }
             catch (Exception ex)
             {
