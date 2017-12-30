@@ -163,7 +163,7 @@ namespace UpdaterServerSAEA
 
                             if (!e.AcceptSocket.SendAsync(e))
                             {
-                                ProcessSendFile(e);
+                                 
                             }
                         }
                     }
@@ -179,6 +179,7 @@ namespace UpdaterServerSAEA
             {
                 var comobject = new ComObject();
                 var receiveData = comobject.Buffer.Take(bytesRead).ToArray();
+                Array.Copy(e.Buffer, e.Offset, receiveData, 0, e.BytesTransferred);
                 var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientRequestFileTag());
                 if (dataList != null)
                 {
