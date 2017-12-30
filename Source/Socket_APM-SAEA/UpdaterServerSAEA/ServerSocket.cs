@@ -43,27 +43,11 @@ namespace UpdaterServerSAEA
             for (var i = 0; i < _backlog; i++)
             {
                 var readWriteEventArg = new SocketAsyncEventArgs();
-                readWriteEventArg.Completed += OnIO_Completed;
-
                 _bufferManager.SetBuffer(readWriteEventArg);
                 _readWritePool.Push(readWriteEventArg);
             }
         }
 
-        private void OnIO_Completed(object sender, SocketAsyncEventArgs e)
-        {
-            switch (e.LastOperation)
-            {
-                case SocketAsyncOperation.Accept:
-                    ProcessAccept(e);
-                    break;
-                case SocketAsyncOperation.Receive:
-                    ProcessReceiveFindFileRequest(e);
-                    break;
-                default:
-                    break;
-            }
-        }
 
         public void StartServer()
         {
@@ -108,6 +92,7 @@ namespace UpdaterServerSAEA
             ProcessAccept(e);
         }
 
+
         private void ProcessAccept(SocketAsyncEventArgs e)
         {     
             if (e.SocketError == SocketError.Success)
@@ -117,6 +102,7 @@ namespace UpdaterServerSAEA
                 {
                     SocketAsyncEventArgs readEventArgs = _readWritePool.Pop();
                     readEventArgs.AcceptSocket = e.AcceptSocket;
+                    readEventArgs.Completed += ReceiveFindFileRequest_Completed;
 
                     if (!socket.ReceiveAsync(readEventArgs))
                     {
@@ -125,6 +111,11 @@ namespace UpdaterServerSAEA
                     StartAccept(e);
                 }
             }          
+        }
+
+        private void ReceiveFindFileRequest_Completed(object sender, SocketAsyncEventArgs e)
+        {
+            ProcessReceiveFindFileRequest(e);
         }
 
 
@@ -160,10 +151,11 @@ namespace UpdaterServerSAEA
 
                             byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
                             e.SetBuffer(foundUpdateFileData, 0, foundUpdateFileData.Length);
+                            e.Completed += FilePosition_Completed;
 
                             if (!e.AcceptSocket.SendAsync(e))
                             {
-                                 
+                                ProcessFilePosition(e);
                             }
                         }
                     }
@@ -171,6 +163,35 @@ namespace UpdaterServerSAEA
             }
         }
 
+
+        private void FilePosition_Completed(object sender, SocketAsyncEventArgs e)
+        {
+            ProcessFilePosition(e);
+        }
+
+
+        private void ProcessFilePosition(SocketAsyncEventArgs e)
+        {
+            if (e.SocketError == SocketError.Success)
+            {
+                var socket = e.AcceptSocket;
+                if (socket.Connected)
+                {                   
+                    e.AcceptSocket = e.AcceptSocket;
+                    e.Completed += SendFile_Completed;
+
+                    if (!socket.ReceiveAsync(e))
+                    {
+                        ProcessSendFile(e);
+                    }
+                }
+            }
+        }
+
+        private void SendFile_Completed(object sender, SocketAsyncEventArgs e)
+        {
+            ProcessSendFile(e);
+        }
 
         private void ProcessSendFile(SocketAsyncEventArgs e)
         {
