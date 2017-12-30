@@ -103,6 +103,7 @@ namespace UpdaterClientAPM
                 ComObject state = (ComObject)ar.AsyncState;
                 Socket client = state.WorkSocket;
                 client.EndConnect(ar);
+                Console.WriteLine($"No.{state.PacketNumber} Has Connected");
                 FindUpdateFileInfo(client, state.PacketNumber);
             }
             catch
@@ -118,6 +119,7 @@ namespace UpdaterClientAPM
         {
             ComObject state = new ComObject { WorkSocket = client, PacketNumber = packetNumber };
             byte[] byteData = PacketUtils.PacketData(PacketUtils.ClientFindFileInfoTag(), Encoding.UTF8.GetBytes(_updateFileName));
+            Console.WriteLine($"No.{packetNumber} Start Find File");
             client.BeginSend(byteData, 0, byteData.Length, 0, FindUpdateFileCallback, state);
         }
         private void FindUpdateFileCallback(IAsyncResult ar)
@@ -148,6 +150,7 @@ namespace UpdaterClientAPM
                     var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ServerFoundFileInfoTag());
                     if (dataList != null && dataList.Any())
                     {
+                        Console.WriteLine($"No.{packetNumber} Found File");
                         SendFileStartPositionInfo(client, packetNumber, _packSize);
                     }
                 }
@@ -163,8 +166,9 @@ namespace UpdaterClientAPM
         #region Step3:Request Packets of UpdateFile and Ready to Receive File
         private void SendFileStartPositionInfo(Socket client, int packetNumber, long packSize)
         {
-            ComObject state = new ComObject { WorkSocket = client };
+            ComObject state = new ComObject { WorkSocket = client, PacketNumber = packetNumber};
             byte[] byteData = PacketUtils.PacketData(PacketUtils.ClientRequestFileTag(), BitConverter.GetBytes(packetNumber * packSize));
+            Console.WriteLine($"No.{packetNumber} Start Request File {packetNumber} Part");
             client.BeginSend(byteData, 0, byteData.Length, 0, SendFileRequestCallback, state);
         }
         private void SendFileRequestCallback(IAsyncResult ar)
@@ -174,6 +178,7 @@ namespace UpdaterClientAPM
                 ComObject state = (ComObject)ar.AsyncState;
                 Socket client = state.WorkSocket;
                 client.EndSend(ar);
+                Console.WriteLine($"No.{state.PacketNumber} Start Receive File {state.PacketNumber} Part");
                 client.BeginReceive(state.Buffer, 0, ComObject.BufferSize, 0, ReceiveFileCallback, state);
             }
             catch
@@ -189,8 +194,7 @@ namespace UpdaterClientAPM
             {
                 ComObject state = (ComObject)ar.AsyncState;
                 Socket client = state.WorkSocket;
-                int bytesRead = client.EndReceive(ar);
-                Console.WriteLine(bytesRead);
+                int bytesRead = client.EndReceive(ar);             
 
                 if (bytesRead > 0)
                 {
@@ -207,6 +211,7 @@ namespace UpdaterClientAPM
                 }
                 else
                 {
+                    Console.WriteLine($"No.{state.PacketNumber} Receive File {state.PacketNumber} End");
                     if (TempReceivePacketDict.Count == _downloadChannelsCount)
                     {
                         ReceiveDone.Set();

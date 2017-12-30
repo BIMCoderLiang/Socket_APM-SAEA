@@ -47,10 +47,17 @@
     <Compile Include="BufferManager.cs" />
     <Compile Include="MainProgram.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ServerSocket.cs" />
     <Compile Include="SocketAsyncEventArgsPool.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\UpdaterShare\UpdaterShare.csproj">
+      <Project>{0f89cc70-3aca-4664-873b-b8a9f4d7cee5}</Project>
+      <Name>UpdaterShare</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

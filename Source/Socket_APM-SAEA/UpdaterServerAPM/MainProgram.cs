@@ -5,7 +5,7 @@ namespace UpdaterServerAPM
     {
         static void Main(string[] args)
         {
-            ServerSocket.StartServer(8885,100);
+            ServerSocket.StartServer(8885, 100);
         }
     }
 }
