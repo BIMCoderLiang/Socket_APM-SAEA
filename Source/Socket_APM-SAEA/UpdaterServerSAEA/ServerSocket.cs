@@ -72,7 +72,7 @@ namespace UpdaterServerSAEA
             if (acceptEventArg == null)
             {
                 acceptEventArg = new SocketAsyncEventArgs();
-                acceptEventArg.Completed += AcceptEventArg_Completed;
+                acceptEventArg.Completed += StartAccept_Completed;
             }
             else
             {
@@ -87,7 +87,7 @@ namespace UpdaterServerSAEA
             }
         }
 
-        private void AcceptEventArg_Completed(object sender, SocketAsyncEventArgs e)
+        private void StartAccept_Completed(object sender, SocketAsyncEventArgs e)
         {
             ProcessAccept(e);
         }
@@ -102,7 +102,7 @@ namespace UpdaterServerSAEA
                 {
                     SocketAsyncEventArgs readEventArgs = _readWritePool.Pop();
                     readEventArgs.AcceptSocket = e.AcceptSocket;
-                    readEventArgs.Completed += ReceiveFindFileRequest_Completed;
+                    readEventArgs.Completed += ProcessAccept_Completed;
 
                     if (!socket.ReceiveAsync(readEventArgs))
                     {
@@ -113,7 +113,7 @@ namespace UpdaterServerSAEA
             }          
         }
 
-        private void ReceiveFindFileRequest_Completed(object sender, SocketAsyncEventArgs e)
+        private void ProcessAccept_Completed(object sender, SocketAsyncEventArgs e)
         {
             ProcessReceiveFindFileRequest(e);
         }
@@ -124,11 +124,9 @@ namespace UpdaterServerSAEA
             if (e.SocketError == SocketError.Success)
             {
                 var bytesRead = e.BytesTransferred;
-                if (e.BytesTransferred > 0 && e.SocketError == SocketError.Success)
+                if (bytesRead > 0 && e.SocketError == SocketError.Success)
                 {
-                    var comobject = new ComObject();
-                    var receiveData = comobject.Buffer.Take(bytesRead).ToArray();
-                    Array.Copy(e.Buffer, e.Offset, receiveData, 0, e.BytesTransferred);                 
+                    var receiveData = e.Buffer.Skip(e.Offset).Take(bytesRead).ToArray();                  
                     var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientFindFileInfoTag());
                     if (dataList != null && dataList.Any())
                     {
@@ -148,10 +146,14 @@ namespace UpdaterServerSAEA
                         {
                             if (string.IsNullOrEmpty(updatefile.FullName) || !File.Exists(updatefile.FullName)) return;
                             _serverPath = updatefile.FullName;
-
+                            
                             byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
-                            e.SetBuffer(foundUpdateFileData, 0, foundUpdateFileData.Length);
-                            e.Completed += FilePosition_Completed;
+
+                            _bufferManager.FreeBuffer(e);
+                            e.SetBuffer(foundUpdateFileData,0, foundUpdateFileData.Length);
+
+                            e.Completed -= ProcessAccept_Completed;
+                            e.Completed += ProcessReceiveFindFileRequest_Completed;
 
                             if (!e.AcceptSocket.SendAsync(e))
                             {
@@ -164,7 +166,7 @@ namespace UpdaterServerSAEA
         }
 
 
-        private void FilePosition_Completed(object sender, SocketAsyncEventArgs e)
+        private void ProcessReceiveFindFileRequest_Completed(object sender, SocketAsyncEventArgs e)
         {
             ProcessFilePosition(e);
         }
@@ -176,10 +178,12 @@ namespace UpdaterServerSAEA
             {
                 var socket = e.AcceptSocket;
                 if (socket.Connected)
-                {                   
-                    e.AcceptSocket = e.AcceptSocket;
-                    e.Completed += SendFile_Completed;
-
+                {
+                    _bufferManager.FreeBuffer(e);
+                    e.SetBuffer(null,0,0);
+                    _bufferManager.SetBuffer(e);
+                    e.Completed -= ProcessReceiveFindFileRequest_Completed;
+                    e.Completed += ProcessFilePosition_Completed;
                     if (!socket.ReceiveAsync(e))
                     {
                         ProcessSendFile(e);
@@ -188,7 +192,7 @@ namespace UpdaterServerSAEA
             }
         }
 
-        private void SendFile_Completed(object sender, SocketAsyncEventArgs e)
+        private void ProcessFilePosition_Completed(object sender, SocketAsyncEventArgs e)
         {
             ProcessSendFile(e);
         }
@@ -198,9 +202,7 @@ namespace UpdaterServerSAEA
             var bytesRead = e.BytesTransferred;
             if (bytesRead > 0 && e.SocketError == SocketError.Success)
             {
-                var comobject = new ComObject();
-                var receiveData = comobject.Buffer.Take(bytesRead).ToArray();
-                Array.Copy(e.Buffer, e.Offset, receiveData, 0, e.BytesTransferred);
+                var receiveData = e.Buffer.Skip(e.Offset).Take(bytesRead).ToArray();              
                 var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientRequestFileTag());
                 if (dataList != null)
                 {
@@ -218,7 +220,12 @@ namespace UpdaterServerSAEA
                                 if (filedata != null)
                                 {
                                     byte[] segmentedFileResponseData = PacketUtils.PacketData(PacketUtils.ServerResponseFileTag(), filedata,packetNumber);
+
+                                    _bufferManager.FreeBuffer(e);
                                     e.SetBuffer(segmentedFileResponseData, 0, segmentedFileResponseData.Length);
+
+                                    e.Completed -= ProcessFilePosition_Completed;
+                                    e.Completed += ProcessSendFile_Completed;
 
                                     if (!e.AcceptSocket.SendAsync(e))
                                     {
@@ -235,12 +242,19 @@ namespace UpdaterServerSAEA
                 CloseClientSocket(e);
             }
         }
-        
+
+
+        private void ProcessSendFile_Completed(object sender, SocketAsyncEventArgs e)
+        {
+            CloseClientSocket(e);
+        }
+
 
         private void CloseClientSocket(SocketAsyncEventArgs e)
         {
             try
             {
+                _bufferManager.FreeBuffer(e);
                 e.AcceptSocket.Shutdown(SocketShutdown.Both);
                 e.AcceptSocket.Close();
             }
