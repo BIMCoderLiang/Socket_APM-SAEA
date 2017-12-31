@@ -15,24 +15,22 @@ namespace UpdaterServerSAEA
         private readonly int _port;
         private readonly int _backlog;
         private Socket _listenSocket;
-        private const int opsToPreAlloc = 2;
+        private const int _opsToPreAlloc = 2;
         private readonly BufferManager _bufferManager;
         private readonly SocketAsyncEventArgsPool _readWritePool;
         private readonly Semaphore _maxNumberAcceptedClients;
 
         private string _serverPath;
-        private static int _downloadChannelsCount;
+        private static readonly int _downloadChannelsCount = DownloadSetting.DownloadChannelsCount;
 
         public ServerSocket(int port,int backlog)
         {
             _port = port;
             _backlog = backlog;
 
-            _bufferManager = new BufferManager(ComObject.BufferSize * backlog * opsToPreAlloc, ComObject.BufferSize);
+            _bufferManager = new BufferManager(ComObject.BufferSize * backlog * _opsToPreAlloc, ComObject.BufferSize);
             _readWritePool = new SocketAsyncEventArgsPool(backlog);
             _maxNumberAcceptedClients = new Semaphore(backlog, backlog);
-
-            _downloadChannelsCount = DownloadSetting.DownloadChannelsCount;
         }
     
 
@@ -150,6 +148,7 @@ namespace UpdaterServerSAEA
                             byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
 
                             _bufferManager.FreeBuffer(e);
+                            _bufferManager.SetBuffer(e);
                             e.SetBuffer(foundUpdateFileData,0, foundUpdateFileData.Length);
 
                             e.Completed -= ProcessAccept_Completed;
@@ -180,10 +179,11 @@ namespace UpdaterServerSAEA
                 if (socket.Connected)
                 {
                     _bufferManager.FreeBuffer(e);
-                    e.SetBuffer(null,0,0);
                     _bufferManager.SetBuffer(e);
+
                     e.Completed -= ProcessReceiveFindFileRequest_Completed;
                     e.Completed += ProcessFilePosition_Completed;
+
                     if (!socket.ReceiveAsync(e))
                     {
                         ProcessSendFile(e);
@@ -219,9 +219,10 @@ namespace UpdaterServerSAEA
                                 byte[] packetNumber = BitConverter.GetBytes(startPosition/packetSize);
                                 if (filedata != null)
                                 {
-                                    byte[] segmentedFileResponseData = PacketUtils.PacketData(PacketUtils.ServerResponseFileTag(), filedata,packetNumber);
+                                    byte[] segmentedFileResponseData = PacketUtils.PacketData(PacketUtils.ServerResponseFileTag(), filedata, packetNumber);
 
                                     _bufferManager.FreeBuffer(e);
+                                    _bufferManager.SetBuffer(e);
                                     e.SetBuffer(segmentedFileResponseData, 0, segmentedFileResponseData.Length);
 
                                     e.Completed -= ProcessFilePosition_Completed;
@@ -255,6 +256,7 @@ namespace UpdaterServerSAEA
             try
             {
                 _bufferManager.FreeBuffer(e);
+
                 e.AcceptSocket.Shutdown(SocketShutdown.Both);
                 e.AcceptSocket.Close();
             }
