@@ -23,7 +23,7 @@ namespace UpdaterServerSAEA
         private string _serverPath;
         private static readonly int _downloadChannelsCount = DownloadSetting.DownloadChannelsCount;
 
-        public ServerSocket(int port,int backlog)
+        public ServerSocket(int port, int backlog)
         {
             _port = port;
             _backlog = backlog;
@@ -32,12 +32,12 @@ namespace UpdaterServerSAEA
             _readWritePool = new SocketAsyncEventArgsPool(backlog);
             _maxNumberAcceptedClients = new Semaphore(backlog, backlog);
         }
-    
+
 
         private void Init()
         {
-            _bufferManager.InitBuffer();        
-              
+            _bufferManager.InitBuffer();
+
             for (var i = 0; i < _backlog; i++)
             {
                 var readWriteEventArg = new SocketAsyncEventArgs();
@@ -92,7 +92,7 @@ namespace UpdaterServerSAEA
 
 
         private void ProcessAccept(SocketAsyncEventArgs e)
-        {     
+        {
             if (e.SocketError == SocketError.Success)
             {
                 var socket = e.AcceptSocket;
@@ -101,14 +101,13 @@ namespace UpdaterServerSAEA
                     SocketAsyncEventArgs readEventArgs = _readWritePool.Pop();
                     readEventArgs.AcceptSocket = e.AcceptSocket;
                     readEventArgs.Completed += ProcessAccept_Completed;
-
                     if (!socket.ReceiveAsync(readEventArgs))
                     {
                         ProcessReceiveFindFileRequest(readEventArgs);
                     }
                     StartAccept(e);
                 }
-            }          
+            }
         }
 
         private void ProcessAccept_Completed(object sender, SocketAsyncEventArgs e)
@@ -119,48 +118,42 @@ namespace UpdaterServerSAEA
 
         private void ProcessReceiveFindFileRequest(SocketAsyncEventArgs e)
         {
-            if (e.SocketError == SocketError.Success)
+            var bytesRead = e.BytesTransferred;
+            if (bytesRead > 0 && e.SocketError == SocketError.Success)
             {
-                var bytesRead = e.BytesTransferred;
-                if (bytesRead > 0 && e.SocketError == SocketError.Success)
+                var receiveData = e.Buffer.Skip(e.Offset).Take(bytesRead).ToArray();
+                var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientFindFileInfoTag());
+                if (dataList != null && dataList.Any())
                 {
-                    var receiveData = e.Buffer.Skip(e.Offset).Take(bytesRead).ToArray();                  
-                    var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientFindFileInfoTag());
-                    if (dataList != null && dataList.Any())
+                    var request = PacketUtils.GetData(PacketUtils.ClientFindFileInfoTag(), dataList.FirstOrDefault());
+                    string str = System.Text.Encoding.UTF8.GetString(request);
+                    var infos = str.Split('_');
+                    var productName = infos[0];
+                    var revitVersion = infos[1];
+                    var currentVersion = infos[2];
+
+                    var mainFolder = AppDomain.CurrentDomain.BaseDirectory.Replace("bin", "TestFile");
+                    var serverFileFolder = Path.Combine(mainFolder, "Server");
+                    var serverFileFiles = new DirectoryInfo(serverFileFolder).GetFiles();
+
+                    var updatefile = serverFileFiles.FirstOrDefault(x => x.Name.Contains(productName) && x.Name.Contains(revitVersion) && x.Name.Contains(currentVersion));
+                    if (updatefile != null)
                     {
-                        var request = PacketUtils.GetData(PacketUtils.ClientFindFileInfoTag(), dataList.FirstOrDefault());
-                        string str = System.Text.Encoding.UTF8.GetString(request);
-                        var infos = str.Split('_');
-                        var productName = infos[0];
-                        var revitVersion = infos[1];
-                        var currentVersion = infos[2];
+                        if (string.IsNullOrEmpty(updatefile.FullName) || !File.Exists(updatefile.FullName)) return;
+                        _serverPath = updatefile.FullName;
 
-                        var mainFolder = AppDomain.CurrentDomain.BaseDirectory.Replace("bin", "TestFile");
-                        var serverFileFolder = Path.Combine(mainFolder, "Server");
-                        var serverFileFiles = new DirectoryInfo(serverFileFolder).GetFiles();
+                        byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
+                        e.SetBuffer(foundUpdateFileData, 0, foundUpdateFileData.Length);
 
-                        var updatefile = serverFileFiles.FirstOrDefault(x => x.Name.Contains(productName) && x.Name.Contains(revitVersion) && x.Name.Contains(currentVersion));
-                        if (updatefile != null)
+                        e.Completed -= ProcessAccept_Completed;
+                        e.Completed += ProcessReceiveFindFileRequest_Completed;
+
+                        if (!e.AcceptSocket.SendAsync(e))
                         {
-                            if (string.IsNullOrEmpty(updatefile.FullName) || !File.Exists(updatefile.FullName)) return;
-                            _serverPath = updatefile.FullName;
-                            
-                            byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
-
-                            _bufferManager.FreeBuffer(e);
-                            _bufferManager.SetBuffer(e);
-                            e.SetBuffer(foundUpdateFileData,0, foundUpdateFileData.Length);
-
-                            e.Completed -= ProcessAccept_Completed;
-                            e.Completed += ProcessReceiveFindFileRequest_Completed;
-
-                            if (!e.AcceptSocket.SendAsync(e))
-                            {
-                                ProcessFilePosition(e);
-                            }
+                            ProcessFilePosition(e);
                         }
                     }
-                }            
+                }
             }
         }
 
@@ -202,7 +195,7 @@ namespace UpdaterServerSAEA
             var bytesRead = e.BytesTransferred;
             if (bytesRead > 0 && e.SocketError == SocketError.Success)
             {
-                var receiveData = e.Buffer.Skip(e.Offset).Take(bytesRead).ToArray();              
+                var receiveData = e.Buffer.Skip(e.Offset).Take(bytesRead).ToArray();
                 var dataList = PacketUtils.SplitBytes(receiveData, PacketUtils.ClientRequestFileTag());
                 if (dataList != null)
                 {
@@ -216,13 +209,13 @@ namespace UpdaterServerSAEA
                             if (packetSize != 0)
                             {
                                 byte[] filedata = FileUtils.GetFile(_serverPath, startPosition, packetSize);
-                                byte[] packetNumber = BitConverter.GetBytes(startPosition/packetSize);
+                                byte[] packetNumber = BitConverter.GetBytes(startPosition / packetSize);
+
+                                Console.WriteLine("Receive File Request PacketNumber: "+startPosition / packetSize);
+
                                 if (filedata != null)
                                 {
                                     byte[] segmentedFileResponseData = PacketUtils.PacketData(PacketUtils.ServerResponseFileTag(), filedata, packetNumber);
-
-                                    _bufferManager.FreeBuffer(e);
-                                    _bufferManager.SetBuffer(e);
                                     e.SetBuffer(segmentedFileResponseData, 0, segmentedFileResponseData.Length);
 
                                     e.Completed -= ProcessFilePosition_Completed;
@@ -255,8 +248,6 @@ namespace UpdaterServerSAEA
         {
             try
             {
-                _bufferManager.FreeBuffer(e);
-
                 e.AcceptSocket.Shutdown(SocketShutdown.Both);
                 e.AcceptSocket.Close();
             }
@@ -268,7 +259,7 @@ namespace UpdaterServerSAEA
             {
                 _maxNumberAcceptedClients.Release();
                 _readWritePool.Push(e);
-            }          
+            }
         }
     }
 }
