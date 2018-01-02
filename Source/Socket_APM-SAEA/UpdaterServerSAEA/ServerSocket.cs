@@ -143,7 +143,9 @@ namespace UpdaterServerSAEA
                         _serverPath = updatefile.FullName;
 
                         byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
-                        e.SetBuffer(foundUpdateFileData, 0, foundUpdateFileData.Length);
+
+                        Array.Clear(e.Buffer, e.Offset, e.Count);
+                        Array.Copy(foundUpdateFileData, 0, e.Buffer, e.Offset, foundUpdateFileData.Length);
 
                         e.Completed -= ProcessAccept_Completed;
                         e.Completed += ProcessReceiveFindFileRequest_Completed;
@@ -171,8 +173,7 @@ namespace UpdaterServerSAEA
                 var socket = e.AcceptSocket;
                 if (socket.Connected)
                 {
-                    _bufferManager.FreeBuffer(e);
-                    _bufferManager.SetBuffer(e);
+                    Array.Clear(e.Buffer, e.Offset, e.Count);
 
                     e.Completed -= ProcessReceiveFindFileRequest_Completed;
                     e.Completed += ProcessFilePosition_Completed;
@@ -216,7 +217,9 @@ namespace UpdaterServerSAEA
                                 if (filedata != null)
                                 {
                                     byte[] segmentedFileResponseData = PacketUtils.PacketData(PacketUtils.ServerResponseFileTag(), filedata, packetNumber);
-                                    e.SetBuffer(segmentedFileResponseData, 0, segmentedFileResponseData.Length);
+
+                                    Array.Clear(e.Buffer, e.Offset, e.Count);
+                                    Array.Copy(segmentedFileResponseData, 0, e.Buffer, e.Offset, segmentedFileResponseData.Length);
 
                                     e.Completed -= ProcessFilePosition_Completed;
                                     e.Completed += ProcessSendFile_Completed;
