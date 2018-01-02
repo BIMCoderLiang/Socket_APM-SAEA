@@ -99,7 +99,7 @@ namespace UpdaterServerSAEA
                 if (socket.Connected)
                 {
                     SocketAsyncEventArgs readEventArgs = _readWritePool.Pop();
-                    readEventArgs.AcceptSocket = e.AcceptSocket;
+                    readEventArgs.AcceptSocket = socket;
                     readEventArgs.Completed += ProcessAccept_Completed;
                     if (!socket.ReceiveAsync(readEventArgs))
                     {
