@@ -142,6 +142,7 @@ namespace UpdaterServerSAEA
                         if (string.IsNullOrEmpty(updatefile.FullName) || !File.Exists(updatefile.FullName)) return;
                         _serverPath = updatefile.FullName;
 
+                        //ready to send back to Client
                         byte[] foundUpdateFileData = PacketUtils.PacketData(PacketUtils.ServerFoundFileInfoTag(), null);
 
                         Array.Clear(e.Buffer, e.Offset, e.Count);
@@ -173,6 +174,7 @@ namespace UpdaterServerSAEA
                 var socket = e.AcceptSocket;
                 if (socket.Connected)
                 {
+                    //clear buffer
                     Array.Clear(e.Buffer, e.Offset, e.Count);
 
                     e.Completed -= ProcessReceiveFindFileRequest_Completed;
@@ -216,6 +218,7 @@ namespace UpdaterServerSAEA
 
                                 if (filedata != null)
                                 {
+                                    //ready to send back to Client
                                     byte[] segmentedFileResponseData = PacketUtils.PacketData(PacketUtils.ServerResponseFileTag(), filedata, packetNumber);
 
                                     Array.Clear(e.Buffer, e.Offset, e.Count);
